@@ -5,7 +5,7 @@ import requests
 
 from datetime import datetime, timezone
 
-from app.client.engsel import BASE_API_URL, UA
+from app.client.engsel import BASE_API_URL, UA, APP_VERSION
 from app.client.encrypt import (
     API_KEY,
     build_encrypted_field,
@@ -137,7 +137,7 @@ def settlement_bounty(
         "x-signature": x_sig,
         "x-request-id": str(uuid.uuid4()),
         "x-request-at": java_like_timestamp(x_requested_at),
-        "x-version-app": "8.9.0",
+        "x-version-app": APP_VERSION,
     }
     
     url = f"{BASE_API_URL}/{path}"
@@ -214,7 +214,7 @@ def settlement_loyalty(
         "x-signature": x_sig,
         "x-request-id": str(uuid.uuid4()),
         "x-request-at": java_like_timestamp(x_requested_at),
-        "x-version-app": "8.9.0",
+        "x-version-app": APP_VERSION,
     }
 
     url = f"{BASE_API_URL}/{path}"
@@ -291,7 +291,7 @@ def bounty_allotment(
         "x-signature": x_sig,
         "x-request-id": str(uuid.uuid4()),
         "x-request-at": java_like_timestamp(x_requested_at),
-        "x-version-app": "8.9.0",
+        "x-version-app": APP_VERSION,
     }
     
     url = f"{BASE_API_URL}/{path}"
