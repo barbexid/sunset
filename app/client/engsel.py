@@ -17,29 +17,21 @@ if not BASE_API_URL:
     raise ValueError("BASE_API_URL environment variable not set")
 UA = os.getenv("UA")
 
-def send_api_request(
-    api_key: str,
-    path: str,
-    payload_dict: dict,
-    id_token: str,
-    method: str = "POST",
-):
-    encrypted_payload = encryptsign_xdata(
-        api_key=api_key,
-        method=method,
-        path=path,
-        id_token=id_token,
-        payload=payload_dict
-    )
-    
-    xtime = int(encrypted_payload["encrypted_body"]["xtime"])
-    
-    now = datetime.now(timezone.utc).astimezone()
-    sig_time_sec = (xtime // 1000)
+APP_VERSION = os.getenv("APP_VERSION", "8.9.0")
 
+
+def send_api_request(api_key, path, payload_dict, id_token, method="POST"):
+    encrypted_payload = encryptsign_xdata(
+        api_key=api_key, method=method, path=path,
+        id_token=id_token, payload=payload_dict,
+    )
+    xtime = int(encrypted_payload["encrypted_body"]["xtime"])
+    sig_time_sec = xtime // 1000
+
+    now = datetime.now(timezone.utc).astimezone()
     body = encrypted_payload["encrypted_body"]
     x_sig = encrypted_payload["x_signature"]
-    
+
     headers = {
         "host": BASE_API_URL.replace("https://", ""),
         "content-type": "application/json; charset=utf-8",
@@ -51,55 +43,57 @@ def send_api_request(
         "x-signature": x_sig,
         "x-request-id": str(uuid.uuid4()),
         "x-request-at": java_like_timestamp(now),
-        "x-version-app": "8.9.0",
+        "x-version-app": APP_VERSION,
     }
 
     url = f"{BASE_API_URL}/{path}"
-    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=30)
-    
-    # print(f"Headers: {json.dumps(headers, indent=2)}")
-    # print(f"Response body: {resp.text}")
+    try:
+        resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=30)
+    except requests.RequestException as e:
+        return {"status": "ERROR", "code": "NETWORK", "message": str(e)}
 
     try:
         decrypted_body = decrypt_xdata(api_key, json.loads(resp.text))
-        # print(f"Decrypted body: {json.dumps(decrypted_body, indent=2)}")
+        if not isinstance(decrypted_body, dict):
+            return {"status": "ERROR", "code": "BAD_BODY", "message": "Non-dict response"}
         return decrypted_body
     except Exception as e:
-        print("[decrypt err]", e)
-        return resp.text
+        return {
+            "status": "ERROR",
+            "code": "DECRYPT_ERR",
+            "message": str(e),
+            "raw": resp.text[:500],
+            "http_status": resp.status_code,
+        }
 
-def get_profile(api_key: str, access_token: str, id_token: str) -> dict:
+
+def get_profile(api_key, access_token, id_token) -> dict | None:
     path = "api/v8/profile"
-
     raw_payload = {
         "access_token": access_token,
-        "app_version": "8.9.0",
+        "app_version": APP_VERSION,
         "is_enterprise": False,
-        "lang": "en"
+        "lang": "en",
     }
-
     print("Fetching profile...")
     res = send_api_request(api_key, path, raw_payload, id_token, "POST")
-
+    if not isinstance(res, dict):
+        return None
     return res.get("data")
 
-def get_balance(api_key: str, id_token: str) -> dict:
+
+def get_balance(api_key, id_token) -> dict | None:
     path = "api/v8/packages/balance-and-credit"
-    
-    raw_payload = {
-        "is_enterprise": False,
-        "lang": "en"
-    }
-    
+    raw_payload = {"is_enterprise": False, "lang": "en"}
     print("Fetching balance...")
     res = send_api_request(api_key, path, raw_payload, id_token, "POST")
-    
-    if "data" in res:
-        if "balance" in res["data"]:
-            return res["data"]["balance"]
-    else:
-        print("Error getting balance:", res.get("error", "Unknown error"))
+    if not isinstance(res, dict):
         return None
+    if "data" in res and isinstance(res["data"], dict) and "balance" in res["data"]:
+        return res["data"]["balance"]
+    print("Error getting balance:", res.get("error", res.get("message", "Unknown")))
+    return None
+
 
 def get_family(
     api_key: str,
@@ -174,6 +168,7 @@ def get_family(
 
     return family_data
 
+
 def get_families(api_key: str, tokens: dict, package_category_code: str) -> dict:
     print("Fetching families...")
     path = "api/v8/xl-stores/families"
@@ -195,12 +190,14 @@ def get_families(api_key: str, tokens: dict, package_category_code: str) -> dict
         return None
     return res["data"]
 
+
 def get_package(
     api_key: str,
     tokens: dict,
     package_option_code: str,
     package_family_code: str = "",
-    package_variant_code: str = ""
+    package_variant_code: str = "",
+    silent: bool = False
     ) -> dict:
     path = "api/v8/xl-stores/options/detail"
     
@@ -213,21 +210,25 @@ def get_package(
         "is_enterprise": False,
         "is_shareable": False,
         "is_migration": False,
-        "lang": "en",
+        "lang": "id",
         "package_option_code": package_option_code,
         "is_upsell_pdp": False,
         "package_variant_code": package_variant_code
     }
     
-    print("Fetching package...")
+    if not silent:
+        print("Fetching package...")
+        
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
     if "data" not in res:
-        print(json.dumps(res, indent=2))
-        print("Error getting package:", res.get("error", "Unknown error"))
+        if not silent:
+            print(json.dumps(res, indent=2))
+            print("Error getting package:", res.get("error", res.get("message", "Unknown error")))
         return None
         
     return res["data"]
+
 
 def get_addons(api_key: str, tokens: dict, package_option_code: str) -> dict:
     path = "api/v8/xl-stores/options/addons-pinky-box"
@@ -246,6 +247,7 @@ def get_addons(api_key: str, tokens: dict, package_option_code: str) -> dict:
         return None
         
     return res["data"]
+
 
 def intercept_page(
     api_key: str,
@@ -269,6 +271,7 @@ def intercept_page(
     else:
         print("Intercept error")
 
+
 def login_info(
     api_key: str,
     tokens: dict,
@@ -290,6 +293,7 @@ def login_info(
         return None
         
     return res["data"]
+
 
 def get_package_details(
     api_key: str,
@@ -330,6 +334,7 @@ def get_package_details(
     
     return package_details_data
 
+
 def get_notifications(
     api_key: str,
     tokens: dict,
@@ -348,6 +353,7 @@ def get_notifications(
         return None
         
     return res
+
 
 def get_notification_detail(
     api_key: str,
@@ -369,6 +375,7 @@ def get_notification_detail(
         return None
 
     return res
+
 
 def get_pending_transaction(api_key: str, tokens: dict) -> dict:
     # @TODO: implement this function properly
@@ -407,6 +414,7 @@ def get_pending_transaction(api_key: str, tokens: dict) -> dict:
     # }
 
     return res.get("data")
+
 
 def get_transaction_history(api_key: str, tokens: dict) -> dict:
     path = "payments/api/v8/transaction-history"
@@ -448,20 +456,40 @@ def get_transaction_history(api_key: str, tokens: dict) -> dict:
 
     return res.get("data")
 
-def get_tiering_info(api_key: str, tokens: dict) -> dict:
+
+def get_tiering_info(api_key: str, tokens: dict) -> dict | None:
     path = "gamification/api/v8/loyalties/tiering/info"
-
-    raw_payload = {
-        "is_enterprise": False,
-        "lang": "en"
-    }
-
-    print("Fetching tiering info...")
+    raw_payload = {"is_enterprise": False, "lang": "en"}
+    
+    # print("Fetching tiering info...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
-    if res:
+    if isinstance(res, dict) and res.get("status") == "SUCCESS":
         return res.get("data", {})
-    return {}
+    
+    return None
+
+
+def get_total_quota_byte(api_key: str, tokens: dict) -> int:
+    path = "api/v8/packages/quota-details"
+    payload = {"is_enterprise": False, "lang": "en", "family_member_id": ""}
+    
+    res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
+    
+    if not isinstance(res, dict) or res.get("status") != "SUCCESS":
+        return 0
+        
+    total_quota_byte = 0
+    quotas = res.get("data", {}).get("quotas", [])
+    
+    for q in quotas:
+        for b in q.get("benefits", []):
+            # Filter tipe data atau jika angkanya gede (misal cloud storage)
+            if b.get("data_type") == "DATA" or b.get("total", 0) > 1_000_000:
+                total_quota_byte += b.get("remaining", 0)
+                
+    return total_quota_byte
+
 
 def unsubscribe(
     api_key: str,
@@ -494,6 +522,7 @@ def unsubscribe(
             return False
     except Exception as e:
         return False
+
 
 def dashboard_segments(
     api_key: str,
