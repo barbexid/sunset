@@ -461,7 +461,7 @@ def get_tiering_info(api_key: str, tokens: dict) -> dict | None:
     path = "gamification/api/v8/loyalties/tiering/info"
     raw_payload = {"is_enterprise": False, "lang": "en"}
     
-    # print("Fetching tiering info...")
+    print("Fetching tiering info...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
     if isinstance(res, dict) and res.get("status") == "SUCCESS":
@@ -484,7 +484,6 @@ def get_total_quota_byte(api_key: str, tokens: dict) -> int:
     
     for q in quotas:
         for b in q.get("benefits", []):
-            # Filter tipe data atau jika angkanya gede (misal cloud storage)
             if b.get("data_type") == "DATA" or b.get("total", 0) > 1_000_000:
                 total_quota_byte += b.get("remaining", 0)
                 
