@@ -22,9 +22,8 @@ def show_store_segments_menu(is_enterprise: bool = False):
         segments = segments_res.get("data", {}).get("store_segments", [])
         
         clear_screen()
-        
         print("=" * WIDTH)
-        print("Store Segments:")
+        print("🎯 Store Segments (Promo Spesial)".center(WIDTH))
         print("=" * WIDTH)
         
         packages = {}
@@ -32,9 +31,8 @@ def show_store_segments_menu(is_enterprise: bool = False):
             name = segment.get("title", "N/A")
             banners = segment.get("banners", [])
             
-            letter = chr(65 + i)  # Convert 0 -> A, 1 -> B, etc.
-            print("-" * WIDTH)
-            print(f"{letter}. Banner: {name}")
+            letter = chr(65 + i)
+            print(f"📌 {letter}. {name}")
             print("-" * WIDTH)
             
             for j, banner in enumerate(banners):
@@ -51,23 +49,21 @@ def show_store_segments_menu(is_enterprise: bool = False):
                     "action_type": action_type
                 }
                 
-                print(f"  {letter}{j + 1}. {family_name} - {title}")
-                print(f"     Price: Rp{discounted_price}")
-                print(f"     Validity: {validity}")
+                print(f"  [{letter}{j + 1}] {family_name} - {title}")
+                print(f"       💰 Rp {discounted_price} | ⏳ {validity}")
                 print("-" * WIDTH)
-                
-                # print(json.dumps(banner, indent=4))  # Debug: Show full banner data
             
-        print("00. Back to Main Menu")
+        print(" 00. Kembali ke Menu Utama")
         print("=" * WIDTH)
-        choice = input("Enter your choice to view package details (e.g., A1, B2): ")
+        choice = input("Pilih kode paket (contoh: A1, B2): ").strip().lower()
+        
         if choice == "00":
             in_store_segments_menu = False
             continue
         
-        selected_pkg = packages.get(choice.lower())
+        selected_pkg = packages.get(choice.upper()) or packages.get(choice)
         if not selected_pkg:
-            print("Invalid choice. Please enter a valid package code.")
+            print("❌ Kode tidak valid.")
             pause()
             continue
         
@@ -75,14 +71,8 @@ def show_store_segments_menu(is_enterprise: bool = False):
         action_type = selected_pkg["action_type"]
         
         if action_type == "PDP":
-            _ = show_package_details(
-                api_key,
-                tokens,
-                action_param,
-                is_enterprise
-            )
+            _ = show_package_details(api_key, tokens, action_param, is_enterprise)
         else:
             print("=" * WIDTH)
-            print("Unhandled Action Type")
-            print(f"Action type: {action_type}\nParam: {action_param}")
+            print(f"⚠️ Action Type '{action_type}' belum didukung.")
             pause()
