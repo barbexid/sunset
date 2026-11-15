@@ -1,19 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 from app.menus.package import get_packages_by_family, show_package_details
-from app.menus.util import pause, clear_screen, format_quota_byte
+from app.menus.util import pause, clear_screen, format_quota_byte, normalize_msisdn
 from app.client.circle import (
-    get_group_data,
-    get_group_members,
-    create_circle,
-    validate_circle_member,
-    invite_circle_member,
-    remove_circle_member,
-    accept_circle_invitation,
-    spending_tracker,
-    get_bonus_data,
+    get_group_data, get_group_members, create_circle, validate_circle_member,
+    invite_circle_member, remove_circle_member, accept_circle_invitation,
+    spending_tracker, get_bonus_data,
 )
-
 from app.service.auth import AuthInstance
 from app.client.encrypt import decrypt_circle_msisdn
 
@@ -21,127 +14,104 @@ WIDTH = 55
 
 def show_circle_creation(api_key: str, tokens: dict):
     clear_screen()
-    print("Create a new Circle")
-    print("-" * WIDTH)
+    print("=" * WIDTH)
+    print("Buat Circle Baru".center(WIDTH))
+    print("=" * WIDTH)
     
-    parent_name = input("Enter your name (Parent): ")
-    group_name = input("Enter Circle name: ")
-    member_msisdn = input("Enter initial member's MSISDN (e.g., 6281234567890): ")
-    member_name = input("Enter initial member's name: ")
+    parent_name = input("Nama Anda (Parent): ").strip()
+    group_name = input("Nama Circle: ").strip()
+    member_msisdn = input("Nomor anggota ( 08xx / 628xx ): ").strip()
+    member_msisdn = normalize_msisdn(member_msisdn)
+    member_name = input("Nama anggota: ").strip()
     
-    create_res = create_circle(
-        api_key,
-        tokens,
-        parent_name,
-        group_name,
-        member_msisdn,
-        member_name
-    )
+    print("\n⏳ Membuat Circle...")
+    create_res = create_circle(api_key, tokens, parent_name, group_name, member_msisdn, member_name)
     
-    print("Server Response:")
-    print(json.dumps(create_res, indent=2))
-    
+    if isinstance(create_res, dict) and create_res.get("status") == "SUCCESS":
+        print("✅ Circle berhasil dibuat!")
+    else:
+        print(f"❌ Gagal membuat Circle: {create_res.get('message', 'Unknown Error')}")
     pause()
 
-def show_bonus_list(
-    api_key: str,
-    tokens: dict,
-    parent_subs_id: str,
-    family_id: str,
-):
+def show_bonus_list(api_key: str, tokens: dict, parent_subs_id: str, family_id: str):
     in_circle_bonus_menu = True
-    
     while in_circle_bonus_menu:
         clear_screen()
+        print("⏳ Mengambil data bonus...")
+        bonus_data = get_bonus_data(api_key, tokens, parent_subs_id, family_id)
         
-        print("Fetching bonus data...")
-        bonus_data = get_bonus_data(
-            api_key,
-            tokens,
-            parent_subs_id,
-            family_id
-        )
-        if bonus_data.get("status") != "SUCCESS":
-            print("Failed to fetch bonus data.")
+        if not isinstance(bonus_data, dict) or bonus_data.get("status") != "SUCCESS":
+            print("❌ Gagal mengambil data bonus.")
             pause()
             return
         
         bonus_list = bonus_data.get("data", {}).get("bonuses", [])
         if not bonus_list:
-            print("No bonus data available.")
+            print("Belum ada data bonus.")
             pause()
             return
         
         print("=" * WIDTH)
-        print("Circle Bonus List".center(WIDTH))
+        print("🎁 Circle Bonus List".center(WIDTH))
         print("=" * WIDTH)
         
         for idx, bonus in enumerate(bonus_list, start=1):
             bonus_name = bonus.get("name", "N/A")
             bonus_type = bonus.get("bonus_type", "N/A")
             action_type = bonus.get("action_type", "N/A")
-            action_param = bonus.get("action_param", "N/A")
             
-            print(f"{idx}. {bonus_name} | Type: {bonus_type}")
-            print(f"   Action: {action_type} | Param: {action_param}")
+            print(f"  {idx:>2}. {bonus_name} (Tipe: {bonus_type})")
+            print("-" * WIDTH)
             
-        print("-" * WIDTH)
-        print("Options:")
-        print("-" * WIDTH)
-        print("Enter the number of the bonus to view detail.")
-        print("00. Back")
+        print(" 00. Kembali")
+        print("=" * WIDTH)
         
-        choice = input("Pilih opsi: ")
+        choice = input("Pilih bonus (nomor): ").strip()
         if choice == "00":
             in_circle_bonus_menu = False
-        else:
-            bonus_number = int(choice)
-            if bonus_number < 1 or bonus_number > len(bonus_list):
-                print("Invalid bonus number.")
-                pause()
-                continue
+            continue
             
-            selected_bonus = bonus_list[bonus_number - 1]
+        if choice.isdigit() and 1 <= int(choice) <= len(bonus_list):
+            selected_bonus = bonus_list[int(choice) - 1]
             action_type = selected_bonus.get("action_type", "N/A")
             action_param = selected_bonus.get("action_param", "N/A")
             
             if action_type == "PLP":
                 get_packages_by_family(action_param)
             elif action_type == "PDP":
-                show_package_details(
-                    api_key,
-                    tokens,
-                    action_param,
-                    False,
-                )
+                show_package_details(api_key, tokens, action_param, False)
             else:
-                print("=" * WIDTH)
-                print("Unhandled Action Type")
-                print(f"Action type: {action_type}\nParam: {action_param}")
+                print(f"⚠️ Action Type '{action_type}' belum didukung.")
                 pause()
-        
+        else:
+            print("❌ Pilihan tidak valid.")
+            pause()
 
 def show_circle_info(api_key: str, tokens: dict):
     in_circle_menu = True
-    user: dict = AuthInstance.get_active_user()
-    my_msisdn = user.get("number", "")
+    user = AuthInstance.get_active_user()
+    my_msisdn = user.get("number", "") if user else ""
 
     while in_circle_menu:
         clear_screen()
+    #    print("⏳ Mengambil data Circle...")
         group_res = get_group_data(api_key, tokens)
-        if group_res.get("status") != "SUCCESS":
-            print("Failed to fetch circle data.")
+        
+        if not isinstance(group_res, dict) or group_res.get("status") != "SUCCESS":
+            print("❌ Gagal mengambil data Circle.")
             pause()
             return
         
         group_data = group_res.get("data", {})        
-        group_id = group_data.get("group_id", "") # or family_id
+        group_id = group_data.get("group_id", "")
 
         if group_id == "":
-            print("You are not part of any Circle.")
+            print("=" * WIDTH)
+            print("Anda belum tergabung dalam Circle.".center(WIDTH))
+            print("=" * WIDTH)
             
-            create_new = input("Do you want to create a new Circle? (y/n): ")
-            if create_new.lower() == "y":
+            create_new = input("Apakah Anda ingin membuat Circle baru? (y/n): ").strip().lower()
+            if create_new == "y":
                 show_circle_creation(api_key, tokens)
                 continue
             else:
@@ -150,7 +120,7 @@ def show_circle_info(api_key: str, tokens: dict):
         
         group_status = group_data.get("group_status", "N/A")
         if group_status == "BLOCKED":
-            print("This Circle is currently blocked.")
+            print("❌ Circle ini sedang diblokir.")
             pause()
             return
         
@@ -158,226 +128,192 @@ def show_circle_info(api_key: str, tokens: dict):
         owner_name = group_data.get("owner_name", "N/A")
         
         members_res = get_group_members(api_key, tokens, group_id)
-        if members_res.get("status") != "SUCCESS":
-            print("Failed to fetch circle members.")
+        if not isinstance(members_res, dict) or members_res.get("status") != "SUCCESS":
+            print("❌ Gagal mengambil data anggota Circle.")
             pause()
             return
         
         members_data = members_res.get("data", {})
         members = members_data.get("members", [])
-        if len(members) == 0:
-            print("No members found in the Circle.")
+        if not members:
+            print("❌ Tidak ada anggota di Circle ini.")
             pause()
             return
         
         parent_member_id = ""
         parent_subs_id = ""
-        parrent_msisdn = ""
+        parent_msisdn = ""
+        
         for member in members:
             if member.get("member_role", "") == "PARENT":
                 parent_member_id = member.get("member_id", "")
                 parent_subs_id = member.get("subscriber_number", "")
-                parrent_msisdn_encrypted = member.get("msisdn", "")
-                parrent_msisdn = decrypt_circle_msisdn(api_key, parrent_msisdn_encrypted)
+                enc_msisdn = member.get("msisdn", "")
+                parent_msisdn = decrypt_circle_msisdn(api_key, enc_msisdn)
         
         package = members_data.get("package", {})
         package_name = package.get("name", "N/A")
         benefit = package.get("benefit", {})
         allocation_byte = benefit.get("allocation", 0)
-        consumption_byte = benefit.get("consumption", 0)
         remaining_byte = benefit.get("remaining", 0)
         
-        formatted_allocation = format_quota_byte(allocation_byte)
-        formatted_consumption = format_quota_byte(consumption_byte)
-        formatted_remaining = format_quota_byte(remaining_byte)
+        formatted_alloc = format_quota_byte(allocation_byte)
+        formatted_remain = format_quota_byte(remaining_byte)
         
-        # Spending Tracker
-        spending_res = spending_tracker(
-            api_key,
-            tokens,
-            parent_subs_id,
-            group_id
-        )
-        if spending_res.get("status") != "SUCCESS":
-            print("Failed to fetch spending tracker data.")
-            print(spending_res)
-            pause()
-            return
-        
-        spending_data = spending_res.get("data", {})
-        spend = spending_data.get("spend", 0)
-        target = spending_data.get("target", 0)
+        spending_res = spending_tracker(api_key, tokens, parent_subs_id, group_id)
+        if isinstance(spending_res, dict) and spending_res.get("status") == "SUCCESS":
+            spending_data = spending_res.get("data", {})
+            spend = spending_data.get("spend", 0)
+            target = spending_data.get("target", 0)
+            spending_str = f"Rp {spend:,} / Rp {target:,}"
+        else:
+            spending_str = "N/A"
         
         clear_screen()
-        
         print("=" * WIDTH)
-        print(f"Circle: {group_name} ({group_status})".center(WIDTH))
-        print(f"Owner: {owner_name} {parrent_msisdn}".center(WIDTH))
-        print("-" * WIDTH)
-        print(f"Package: {package_name} | {formatted_remaining} / {formatted_allocation}".center(WIDTH))
-        print("-" * WIDTH)
-        print(f"Spending: Rp{spend:,} / Rp{target:,}".center(WIDTH))
+        print("👥 Informasi Circle".center(WIDTH))
         print("=" * WIDTH)
+        print(f"📌 Nama     : {group_name} ({group_status})")
+        print(f"👑 Owner    : {owner_name} ({parent_msisdn})")
+        print(f"📦 Paket    : {package_name}")
+        print(f"📊 Sisa Kuota: {formatted_remain} / {formatted_alloc}")
+        print(f"💸 Spending : {spending_str}")
+        print("-" * WIDTH)
+        print("👥 Daftar Anggota:")
         
-        print("Members:")
         for idx, member in enumerate(members, start=1):
-            encrypted_msisdn = member.get("msisdn", "")
-            msisdn = decrypt_circle_msisdn(api_key, encrypted_msisdn)
+            enc_msisdn = member.get("msisdn", "")
+            msisdn = decrypt_circle_msisdn(api_key, enc_msisdn)
+            if not msisdn:
+                msisdn = "<No Number>"
             
-            member_id = member.get("member_id", "")
             member_role = member.get("member_role", "N/A")
-            member_subs_number = member.get("subscriber_number", "")
-            
-            join_date_ts = member.get("join_date", 0)
-            slot_type = member.get("slot_type", "N/A")
             member_name = member.get("member_name", "N/A")
-            member_allocation_byte = member.get("allocation", 0)
-            member_remaining_byte = member.get("remaining", 0)
             member_status = member.get("status", "N/A")
             
-            formatted_msisdn = f"{msisdn}"
-            if msisdn == "":
-                formatted_msisdn = "<No Number>"
-            
-            me_mark = ""
-            if str(msisdn) == str(my_msisdn):
-                me_mark = "(You)"
-            
+            me_mark = "(Anda)" if str(msisdn) == str(my_msisdn) else ""
             member_type = "Parent" if member_role == "PARENT" else "Member"
-            formated_quota_allocated = format_quota_byte(member_allocation_byte)
-            formated_quota_used = format_quota_byte(member_allocation_byte - member_remaining_byte)
-            print(f"{idx}. {formatted_msisdn} ({member_name}) | {member_type} {me_mark}")
-            print(f"   Joined: {datetime.fromtimestamp(join_date_ts).strftime('%Y-%m-%d')} | Slot Type: {slot_type} | Status: {member_status}")
-            print(f"   Usage: {formated_quota_used} / {formated_quota_allocated}")
             
-            print("-" * WIDTH)
+            member_alloc = member.get("allocation", 0)
+            member_remain = member.get("remaining", 0)
+            member_used = max(0, member_alloc - member_remain)
             
-        print("-" * WIDTH)
-        print("Options:")
-        print("-" * WIDTH)
-        print("1. Invite Member to Circle")
-        print("del <number> - Remove Member from Circle (e.g., del 1)")
-        print("acc <number> - Accept Invitation / Force Accept Member")
-        print("2. View Circle Bonus List")
-        print("00. Kembali ke menu utama")
-        choice = input("Pilih opsi: ")
+            print(f"  {idx:>2}. {msisdn} ({member_name}) - {member_type} {me_mark}")
+            print(f"      Status: {member_status} | Usage: {format_quota_byte(member_used)} / {format_quota_byte(member_alloc)}")
+        
+        print("=" * WIDTH)
+        print("Menu:")
+        print(" 1. Undang Anggota Baru")
+        print(" 2. Lihat Bonus Circle")
+        print(" del <nomor> : Hapus Anggota")
+        print(" acc <nomor> : Terima Undangan Anggota")
+        print("00. Kembali ke Menu Utama")
+        print("=" * WIDTH)
+        
+        choice = input("Pilih opsi: ").strip()
+        
         if choice == "00":
             in_circle_menu = False
+            continue
+            
         elif choice == "1":
-            msisdn_to_invite = input("Enter the MSISDN of the member to invite (e.g., 6281234567890): ")
+            msisdn_to_invite = input("Masukkan nomor yang mau diundang: ").strip()
+            msisdn_to_invite = normalize_msisdn(msisdn_to_invite)
+            print(f"⏳ Memvalidasi {msisdn_to_invite}...")
+            
             validate_res = validate_circle_member(api_key, tokens, msisdn_to_invite)
-            if validate_res.get("status") == "SUCCESS":
+            if isinstance(validate_res, dict) and validate_res.get("status") == "SUCCESS":
                 if validate_res.get("data", {}).get("response_code", "") != "200-2001":
-                    print(f"Cannot invite {msisdn_to_invite}: {validate_res.get('data', {}).get('message', 'Unknown error')}")
+                    print(f"❌ Tidak bisa mengundang: {validate_res.get('data', {}).get('message', 'Unknown error')}")
                     pause()
                     continue
             
-            member_name = input("Enter the name of the member to invite: ")
+            member_name = input("Masukkan nama anggota: ").strip()
+            print("⏳ Mengirim undangan...")
             
-            invite_res = invite_circle_member(
-                api_key,
-                tokens,
-                msisdn_to_invite,
-                member_name,
-                group_id,
-                parent_member_id
-            )
-            if invite_res.get("status") == "SUCCESS":
-                if invite_res.get("data", {}).get("response_code", "") == "200-00":
-                    print(f"Invitation sent to {msisdn_to_invite} successfully.")
-                else:
-                    print(f"Failed to invite {msisdn_to_invite}: {invite_res.get('data', {}).get('message', 'Unknown error')}")
+            invite_res = invite_circle_member(api_key, tokens, msisdn_to_invite, member_name, group_id, parent_member_id)
+            if isinstance(invite_res, dict) and invite_res.get("status") == "SUCCESS":
+                print(f"✅ Undangan berhasil dikirim ke {msisdn_to_invite}.")
+            else:
+                print(f"❌ Gagal mengundang: {invite_res.get('message', 'Unknown Error')}")
             pause()
-        elif choice.startswith("del "):
-            try:
-                member_number = int(choice.split(" ")[1])
-                if member_number < 1 or member_number > len(members):
-                    print("Invalid member number.")
-                    pause()
-                    continue
-                member_to_remove = members[member_number - 1]
-                
-                # Prevent removing parent
-                if member_to_remove.get("member_role", "") == "PARENT":
-                    print("Cannot remove the parent member from the Circle.")
-                    pause()
-                    continue
-                
-                member_id = member_to_remove.get("member_id", "")
-                
-                # Prevent removing last member
-                is_last_member = len(members) == 2
-                if is_last_member:
-                    print("Cannot remove the last member from the Circle.")
-                    pause()
-                    continue
-                
-                msisdn_to_remove = decrypt_circle_msisdn(api_key, member_to_remove.get("msisdn", ""))
-                confirm = input(f"Are you sure you want to remove {msisdn_to_remove} from the Circle? (y/n): ")
-                if confirm.lower() != "y":
-                    print("Removal cancelled.")
-                    pause()
-                    continue
-                
-                remove_res = remove_circle_member(
-                    api_key,
-                    tokens,
-                    member_id,
-                    group_id,
-                    parent_member_id,
-                    is_last_member
-                )
-                if remove_res.get("status") == "SUCCESS":
-                    print(f"{msisdn_to_remove} has been removed from the Circle.")
-                    print(json.dumps(remove_res, indent=2))
-                else:
-                    print(f"Error: {remove_res}")
-            except ValueError:
-                print("Invalid input format for deletion.")
-            pause()
-        elif choice.startswith("acc "):
-            try:
-                member_number = int(choice.split(" ")[1])
-                if member_number < 1 or member_number > len(members):
-                    print("Invalid member number.")
-                    pause()
-                    continue
-                member_to_accept = members[member_number - 1]
-                
-                member_status = member_to_accept.get("status", "")
-                if member_status != "INVITED":
-                    print("This member is not in an invited state.")
-                    pause()
-                    continue
-                
-                member_id = member_to_accept.get("member_id", "")
-                msisdn_to_accept = decrypt_circle_msisdn(api_key, member_to_accept.get("msisdn", ""))
-                confirm = input(f"Do you want to accept the invitation for {msisdn_to_accept}? (y/n): ")
-                if confirm.lower() != "y":
-                    print("Acceptance cancelled.")
-                    pause()
-                    continue
-                
-                accept_res = accept_circle_invitation(
-                    api_key,
-                    tokens,
-                    group_id,
-                    member_id,
-                    )
-
-                if accept_res.get("status") == "SUCCESS":
-                    print(f"Invitation for {msisdn_to_accept} has been accepted.")
-                    print(json.dumps(accept_res, indent=2))
-                else:
-                    print(f"Error: {accept_res}")
-            except ValueError:
-                print("Invalid input format for acceptance.")
-            pause()
+            
         elif choice == "2":
-            show_bonus_list(
-                api_key,
-                tokens,
-                parent_subs_id,
-                group_id
-            )
-
+            show_bonus_list(api_key, tokens, parent_subs_id, group_id)
+            
+        elif choice.startswith("del "):
+            parts = choice.split()
+            if len(parts) != 2 or not parts[1].isdigit():
+                print("❌ Format: del <nomor>")
+                pause()
+                continue
+                
+            member_num = int(parts[1])
+            if member_num < 1 or member_num > len(members):
+                print("❌ Nomor tidak valid.")
+                pause()
+                continue
+                
+            member_to_remove = members[member_num - 1]
+            if member_to_remove.get("member_role", "") == "PARENT":
+                print("❌ Tidak bisa menghapus Parent.")
+                pause()
+                continue
+                
+            if len(members) == 2:
+                print("❌ Tidak bisa menghapus anggota terakhir.")
+                pause()
+                continue
+            
+            msisdn_to_remove = decrypt_circle_msisdn(api_key, member_to_remove.get("msisdn", ""))
+            confirm = input(f"Yakin menghapus {msisdn_to_remove}? (y/n): ").strip().lower()
+            if confirm != "y":
+                print("Dibatalkan.")
+                pause()
+                continue
+            
+            member_id = member_to_remove.get("member_id", "")
+            remove_res = remove_circle_member(api_key, tokens, member_id, group_id, parent_member_id, False)
+            
+            if isinstance(remove_res, dict) and remove_res.get("status") == "SUCCESS":
+                print(f"✅ {msisdn_to_remove} berhasil dihapus.")
+            else:
+                print(f"❌ Gagal menghapus: {remove_res.get('message', 'Unknown Error')}")
+            pause()
+            
+        elif choice.startswith("acc "):
+            parts = choice.split()
+            if len(parts) != 2 or not parts[1].isdigit():
+                print("❌ Format: acc <nomor>")
+                pause()
+                continue
+                
+            member_num = int(parts[1])
+            if member_num < 1 or member_num > len(members):
+                print("❌ Nomor tidak valid.")
+                pause()
+                continue
+                
+            member_to_accept = members[member_num - 1]
+            if member_to_accept.get("status", "") != "INVITED":
+                print("❌ Anggota ini tidak dalam status INVITED.")
+                pause()
+                continue
+                
+            member_id = member_to_accept.get("member_id", "")
+            msisdn_to_accept = decrypt_circle_msisdn(api_key, member_to_accept.get("msisdn", ""))
+            confirm = input(f"Terima undangan untuk {msisdn_to_accept}? (y/n): ").strip().lower()
+            if confirm != "y":
+                print("Dibatalkan.")
+                pause()
+                continue
+                
+            accept_res = accept_circle_invitation(api_key, tokens, group_id, member_id)
+            if isinstance(accept_res, dict) and accept_res.get("status") == "SUCCESS":
+                print(f"✅ Undangan {msisdn_to_accept} diterima.")
+            else:
+                print(f"❌ Gagal menerima undangan: {accept_res.get('message', 'Unknown Error')}")
+            pause()
+        else:
+            print("❌ Pilihan tidak valid.")
+            pause()

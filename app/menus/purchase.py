@@ -79,7 +79,7 @@ def purchase_by_family(
             option_price = option["price"]
             
             purchase_count += 1
-            print(f"Pruchase {purchase_count} of {packages_count}...")
+            print(f"Purchase {purchase_count} of {packages_count}...")
             print(f"Trying to buy: {variant_name} - {option_order}. {option_name} - {option['price']}")
             
             payment_items = []
@@ -144,6 +144,8 @@ def purchase_by_family(
                 
             error_msg = ""
 
+            tc_idx = 1 if use_decoy else 0
+
             try:
                 res = settlement_balance(
                     api_key,
@@ -152,7 +154,7 @@ def purchase_by_family(
                     "🤑",
                     False,
                     overwrite_amount=overwrite_amount,
-                    token_confirmation_idx=1
+                    token_confirmation_idx=tc_idx
                 )
                 
                 if res and res.get("status", "") != "SUCCESS":
@@ -169,7 +171,7 @@ def purchase_by_family(
                             "SHARE_PACKAGE",
                             False,
                             overwrite_amount=valid_amount,
-                            token_confirmation_idx=-1
+                            token_confirmation_idx=tc_idx
                         )
                         if res and res.get("status", "") == "SUCCESS":
                             error_msg = ""
@@ -229,14 +231,8 @@ def purchase_n_times(
     tokens: dict = AuthInstance.get_active_tokens() or {}
     
     if use_decoy:
-        # Balance with Decoy
         decoy = DecoyInstance.get_decoy("balance")
-        
-        decoy_package_detail = get_package(
-            api_key,
-            tokens,
-            decoy["option_code"],
-        )
+        decoy_package_detail = get_package(api_key, tokens, decoy["option_code"])
         
         if not decoy_package_detail:
             print("Failed to load decoy package details.")
@@ -282,7 +278,7 @@ def purchase_n_times(
     successful_purchases = []
     
     for i in range(n):
-        print(f"Pruchase {i + 1} of {n}...")
+        print(f"Purchase {i + 1} of {n}...")
         print(f"Trying to buy: {target_variant['name']} - {option_order}. {option_name} - {option_price}")
         
         api_key = AuthInstance.api_key
@@ -293,12 +289,7 @@ def purchase_n_times(
         try:
             if use_decoy:
                 decoy = DecoyInstance.get_decoy("balance")
-                
-                decoy_package_detail = get_package(
-                    api_key,
-                    tokens,
-                    decoy["option_code"],
-                )
+                decoy_package_detail = get_package(api_key, tokens, decoy["option_code"])
                 
                 if not decoy_package_detail:
                     print("Failed to load decoy package details.")
@@ -348,6 +339,8 @@ def purchase_n_times(
         if use_decoy:
             overwrite_amount += decoy_package_detail["package_option"]["price"]
 
+        tc_idx = 1 if use_decoy else 0
+
         try:
             res = settlement_balance(
                 api_key,
@@ -356,7 +349,7 @@ def purchase_n_times(
                 "🤫",
                 False,
                 overwrite_amount=overwrite_amount,
-                token_confirmation_idx=token_confirmation_idx
+                token_confirmation_idx=tc_idx
             )
             
             if res and res.get("status", "") != "SUCCESS":
@@ -373,7 +366,7 @@ def purchase_n_times(
                         "🤫",
                         False,
                         overwrite_amount=valid_amount,
-                        token_confirmation_idx=token_confirmation_idx
+                        token_confirmation_idx=tc_idx
                     )
                     if res and res.get("status", "") == "SUCCESS":
                         successful_purchases.append(
@@ -429,12 +422,7 @@ def purchase_n_times_by_option_code(
     
     if use_decoy:
         decoy = DecoyInstance.get_decoy("balance")
-        
-        decoy_package_detail = get_package(
-            api_key,
-            tokens,
-            decoy["option_code"],
-        )
+        decoy_package_detail = get_package(api_key, tokens, decoy["option_code"])
         
         if not decoy_package_detail:
             print("Failed to load decoy package details.")
@@ -453,7 +441,7 @@ def purchase_n_times_by_option_code(
     successful_purchases = []
     
     for i in range(n):
-        print(f"Pruchase {i + 1} of {n}...")
+        print(f"Purchase {i + 1} of {n}...")
         
         api_key = AuthInstance.api_key
         tokens: dict = AuthInstance.get_active_tokens() or {}
@@ -463,23 +451,14 @@ def purchase_n_times_by_option_code(
         try:
             if use_decoy:
                 decoy = DecoyInstance.get_decoy("balance")
-                
-                decoy_package_detail = get_package(
-                    api_key,
-                    tokens,
-                    decoy["option_code"],
-                )
+                decoy_package_detail = get_package(api_key, tokens, decoy["option_code"])
                 
                 if not decoy_package_detail:
                     print("Failed to load decoy package details.")
                     pause()
                     return False
             
-            target_package_detail = get_package(
-                api_key,
-                tokens,
-                option_code,
-            )
+            target_package_detail = get_package(api_key, tokens, option_code)
         except Exception as e:
             print(f"Exception occurred while fetching package details: {e}")
             continue
@@ -513,6 +492,8 @@ def purchase_n_times_by_option_code(
         if use_decoy:
             overwrite_amount += decoy_package_detail["package_option"]["price"]
 
+        tc_idx = 1 if use_decoy else 0
+
         try:
             res = settlement_balance(
                 api_key,
@@ -521,7 +502,7 @@ def purchase_n_times_by_option_code(
                 "🤫",
                 False,
                 overwrite_amount=overwrite_amount,
-                token_confirmation_idx=token_confirmation_idx
+                token_confirmation_idx=tc_idx
             )
             
             if res and res.get("status", "") != "SUCCESS":
@@ -538,7 +519,7 @@ def purchase_n_times_by_option_code(
                         "🤫",
                         False,
                         overwrite_amount=valid_amount,
-                        token_confirmation_idx=token_confirmation_idx
+                        token_confirmation_idx=tc_idx
                     )
                     if res and res.get("status", "") == "SUCCESS":
                         successful_purchases.append(
