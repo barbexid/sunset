@@ -24,31 +24,27 @@ class Bookmark:
             self._initialized = True
 
     def _save(self, data: List[Dict]):
-        """Helper to write JSON safely."""
         with open(self.filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
     def _ensure_schema(self):
-        """Ensure all bookmarks have the latest schema fields."""
         updated = False
         for p in self.packages:
-            if "family_name" not in p:  # add missing field
+            if "family_name" not in p:
                 p["family_name"] = ""
                 updated = True
             if "order" not in p:
                 p["order"] = 0
                 updated = True
         if updated:
-            self.save_bookmark()  # persist schema upgrade
+            self.save_bookmark()
 
     def load_bookmark(self):
-        """Load bookmarks from JSON file and ensure schema consistency."""
         with open(self.filepath, "r", encoding="utf-8") as f:
             self.packages = json.load(f)
         self._ensure_schema()
 
     def save_bookmark(self):
-        """Save current bookmarks to JSON file."""
         self._save(self.packages)
 
     def add_bookmark(
@@ -60,7 +56,6 @@ class Bookmark:
         option_name: str,
         order: int,
     ) -> bool:
-        """Add a bookmark if it does not already exist."""
         key = (family_code, variant_name, order)
 
         if any(
@@ -72,7 +67,7 @@ class Bookmark:
 
         self.packages.append(
             {
-                "family_name": family_name,  # required field
+                "family_name": family_name,
                 "family_code": family_code,
                 "is_enterprise": is_enterprise,
                 "variant_name": variant_name,
@@ -91,7 +86,6 @@ class Bookmark:
         variant_name: str,
         order: int,
     ) -> bool:
-        """Remove a bookmark if it exists. Returns True if removed."""
         for i, p in enumerate(self.packages):
             if (
                 p["family_code"] == family_code
@@ -107,7 +101,6 @@ class Bookmark:
         return False
 
     def get_bookmarks(self) -> List[Dict]:
-        """Return all bookmarks."""
         return self.packages.copy()
 
 BookmarkInstance = Bookmark()

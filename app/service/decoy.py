@@ -132,7 +132,6 @@ class DecoyPackage:
         if selected_decoy is None:
             return None
         
-        # Refresh decoy data if older than 5 minutes
         if int(time.time()) - selected_decoy["last_fetched_at"] > 300:
             self.fetch_decoy_data(decoy_name)
             selected_decoy = self.decoys.get(decoy_name)
