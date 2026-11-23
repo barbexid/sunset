@@ -12,10 +12,12 @@ def show_redeemables_menu(is_enterprise: bool = False):
         api_key = AuthInstance.api_key
         tokens = AuthInstance.get_active_tokens()
         
-        print("Fetching redeemables...")
+        print("Mengambil katalog redeemables...")
         redeemables_res = get_redeemables(api_key, tokens, is_enterprise)
-        if not redeemables_res:
-            print("❌ No redeemables found.")
+        
+        if not isinstance(redeemables_res, dict) or redeemables_res.get("status") != "SUCCESS":
+            print("❌ Gagal mengambil data redeemables.")
+            pause()
             in_redeemables_menu = False
             continue
         
@@ -32,12 +34,13 @@ def show_redeemables_menu(is_enterprise: bool = False):
             category_code = category.get("category_code", "N/A")
             redemables = category.get("redeemables", [])
             
-            letter = chr(65 + i)
+            letter = chr(65 + i)  # A, B, C...
             print(f"📂 {letter}. {category_name}")
             print("-" * WIDTH)
             
             if len(redemables) == 0:
                 print("   (Tidak ada bonus di kategori ini)")
+                print("-" * WIDTH)
                 continue
             
             for j, redemable in enumerate(redemables):
@@ -45,9 +48,10 @@ def show_redeemables_menu(is_enterprise: bool = False):
                 valid_until = redemable.get("valid_until", 0)
                 
                 if valid_until > 0:
-                    valid_until_date = datetime.strftime(
-                        datetime.fromtimestamp(valid_until), "%d %b %Y"
-                    )
+                    try:
+                        valid_until_date = datetime.fromtimestamp(valid_until).strftime("%d %b %Y")
+                    except Exception:
+                        valid_until_date = "N/A"
                 else:
                     valid_until_date = "N/A"
                 
@@ -83,9 +87,26 @@ def show_redeemables_menu(is_enterprise: bool = False):
         
         if action_type == "PLP":
             get_packages_by_family(action_param, is_enterprise, "")
+            
         elif action_type == "PDP":
             show_package_details(api_key, tokens, action_param, is_enterprise)
+            
+        elif action_type in ["LOYALTY", "MYPOINT_LANDING", "WEBVIEW", "URL"]:
+            clear_screen()
+            print("=" * WIDTH)
+            print(f"📌 Fitur: {action_type}")
+            print(f"🔗 Param: {action_param}")
+            print("-" * WIDTH)
+            print("⚠️ Menu ini merupakan halaman Web (Webview) di aplikasi MyXL.")
+            print("   Biasanya digunakan untuk menukar Poin atau Reward.")
+            print("   Aplikasi CLI saat ini belum bisa menampilkan halaman Web.")
+            print("")
+            print("👉 Silakan buka aplikasi MyXL resmi untuk mengakses menu ini.")
+            print("=" * WIDTH)
+            pause()
+            
         else:
             print("=" * WIDTH)
             print(f"⚠️ Action Type '{action_type}' belum didukung.")
+            print(f"   Param: {action_param}")
             pause()
